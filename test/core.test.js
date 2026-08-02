@@ -9,8 +9,21 @@ import {
   normalizeSettings,
   parseClock,
   parseSubtitle,
-  sanitizeFolder
+  sanitizeFolder,
+  shortcutAction
 } from "../src/shared/core.js";
+
+test("maps J/K/L playback shortcuts and suppresses repeated toggles", () => {
+  assert.equal(shortcutAction("j"), "seek-backward");
+  assert.equal(shortcutAction("K"), "toggle-playback");
+  assert.equal(shortcutAction("l"), "seek-forward");
+  assert.equal(shortcutAction("c"), "capture");
+  assert.equal(shortcutAction("k", true), null);
+  assert.equal(shortcutAction("c", true), null);
+  assert.equal(shortcutAction("j", true), "seek-backward");
+  assert.equal(shortcutAction("l", true), "seek-forward");
+  assert.equal(shortcutAction("x"), null);
+});
 
 test("parses supported subtitle clock formats", () => {
   assert.equal(parseClock("00:01:02.500"), 62500);

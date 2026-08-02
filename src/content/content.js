@@ -3,7 +3,7 @@ import(chrome.runtime.getURL("src/shared/core.js")).then((core) => start(core)).
 });
 
 async function start(core) {
-  const { DEFAULT_SETTINGS, MESSAGE_SOURCE, activeCueText, buildCaptureFilename, chooseTrack, normalizeSettings, parseSubtitle } = core;
+  const { DEFAULT_SETTINGS, MESSAGE_SOURCE, activeCueText, buildCaptureFilename, chooseTrack, normalizeSettings, parseSubtitle, shortcutAction } = core;
   let settings = normalizeSettings(await chrome.storage.local.get(DEFAULT_SETTINGS));
   let currentTracks = [];
   let cuesByLanguage = { ja: [], en: [] };
@@ -191,6 +191,20 @@ async function start(core) {
     render();
   }
 
+  function togglePlayback() {
+    const video = getVideo();
+    if (!video) return;
+    if (video.paused || video.ended) {
+      video.play().catch((error) => {
+        lastError = "PLAYBACK_FAILED";
+        toast("再生できませんでした");
+        console.warn("[Netflix Dual Subtitles]", error);
+      });
+    } else {
+      video.pause();
+    }
+  }
+
   function extractMetadata() {
     const title = document.querySelector('[data-uia="video-title"]')?.textContent?.trim()
       || document.querySelector(".ellipsize-text h4")?.textContent?.trim()
@@ -240,13 +254,14 @@ async function start(core) {
   function handleKeydown(event) {
     if (!settings.enabled || !settings.shortcutsEnabled || !getVideo() || isTypingOrDialog()) return;
     if (event.ctrlKey || event.altKey || event.metaKey) return;
-    const key = event.key.toLowerCase();
-    if (!["j", "k", "c"].includes(key) || (key === "c" && event.repeat)) return;
+    const action = shortcutAction(event.key, event.repeat);
+    if (!action) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (key === "j") seek(-10);
-    if (key === "k") seek(10);
-    if (key === "c") capture();
+    if (action === "seek-backward") seek(-10);
+    if (action === "toggle-playback") togglePlayback();
+    if (action === "seek-forward") seek(10);
+    if (action === "capture") capture();
   }
 
   function publicStatus() {

@@ -21,6 +21,17 @@ export function normalizeSettings(value = {}) {
   };
 }
 
+export function shortcutAction(key, repeat = false) {
+  const normalizedKey = String(key || "").toLowerCase();
+  if (repeat && ["k", "c"].includes(normalizedKey)) return null;
+  return {
+    j: "seek-backward",
+    k: "toggle-playback",
+    l: "seek-forward",
+    c: "capture"
+  }[normalizedKey] || null;
+}
+
 export function sanitizeFolder(value) {
   const cleaned = String(value)
     .replace(/[<>:"|?*\\]/g, "_")
