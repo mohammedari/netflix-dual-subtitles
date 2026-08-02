@@ -13,8 +13,9 @@
   <label>文字サイズ<select id="fontSize"><option value="small">小</option><option value="medium">中</option><option value="large">大</option></select></label>
   <label>表示位置<select id="position"><option value="top">上</option><option value="center">中央</option><option value="bottom">下</option></select></label>
   <label class="switch"><input id="shortcutsEnabled" type="checkbox"><span>j / k / l / c キーを有効化</span></label>
+  <button id="capturePermission" type="button">キャプチャ権限を許可</button>
   <label>保存先（Downloads配下）<input id="downloadSubdirectory" type="text" maxlength="80" placeholder="Netflix Captures"></label>
-  <p class="help">j: 10秒戻る　k: 再生・一時停止　l: 10秒進む　c: PNG保存</p>
+  <p class="help">j: 10秒戻る　k: 再生・一時停止　l: 10秒進む　c: PNG保存<br>cは初回のみキャプチャ権限の許可が必要です。</p>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

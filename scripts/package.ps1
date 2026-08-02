@@ -2,7 +2,8 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $releaseRoot = Join-Path $projectRoot "release"
 $stagingRoot = Join-Path $releaseRoot "netflix-dual-subtitles"
-$zipPath = Join-Path $releaseRoot "netflix-dual-subtitles-v0.1.0.zip"
+$manifest = Get-Content -LiteralPath (Join-Path $projectRoot "manifest.json") -Raw | ConvertFrom-Json
+$zipPath = Join-Path $releaseRoot "netflix-dual-subtitles-v$($manifest.version).zip"
 $resolvedProject = [IO.Path]::GetFullPath($projectRoot)
 $resolvedStaging = [IO.Path]::GetFullPath($stagingRoot)
 if (-not $resolvedStaging.StartsWith($resolvedProject, [StringComparison]::OrdinalIgnoreCase)) {

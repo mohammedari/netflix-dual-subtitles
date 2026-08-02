@@ -4,9 +4,18 @@ import { readFile } from "node:fs/promises";
 
 test("manifest is valid MV3 with narrowly scoped permissions", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions.sort(), ["downloads", "storage"]);
-  assert.deepEqual(manifest.host_permissions, ["https://www.netflix.com/*"]);
+  assert.equal(manifest.version, "1.0.0");
+  assert.equal(packageJson.version, manifest.version);
+  assert.deepEqual(manifest.permissions.sort(), ["activeTab", "downloads", "storage"]);
+  assert.deepEqual(manifest.host_permissions, [
+    "https://www.netflix.com/*",
+    "https://*.nflxvideo.net/*",
+    "https://*.nflxso.net/*",
+    "https://*.nflximg.net/*"
+  ]);
+  assert.deepEqual(manifest.optional_host_permissions, ["<all_urls>"]);
   assert.equal(manifest.background.type, "module");
   assert.ok(manifest.content_scripts.some((script) => script.world === "MAIN" && script.run_at === "document_start"));
   assert.ok(manifest.content_scripts.some((script) => script.world === "ISOLATED"));

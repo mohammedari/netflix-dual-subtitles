@@ -1,5 +1,20 @@
 import { isLikelyBlackFrame, sanitizeFolder } from "../shared/core.js";
 
+const allowedSubtitleHosts = /(^|\.)(netflix\.com|nflxvideo\.net|nflxso\.net|nflximg\.net)$/i;
+const MAX_SUBTITLE_LENGTH = 5_000_000;
+
+async function fetchSubtitle(url) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:" || !allowedSubtitleHosts.test(parsed.hostname)) {
+    throw new Error("Subtitle URL is not allowed");
+  }
+  const response = await fetch(parsed.href, { credentials: "omit" });
+  if (!response.ok) throw new Error(`Subtitle request failed (${response.status})`);
+  const text = await response.text();
+  if (text.length > MAX_SUBTITLE_LENGTH) throw new Error("Subtitle response is too large");
+  return { text, contentType: response.headers.get("content-type") || "" };
+}
+
 async function detectBlackFrame(dataUrl) {
   try {
     const blob = await (await fetch(dataUrl)).blob();
@@ -23,10 +38,14 @@ function safeDownloadPath(filename) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== "CAPTURE_VISIBLE_TAB") return undefined;
+  if (!["CAPTURE_VISIBLE_TAB", "FETCH_SUBTITLE"].includes(message?.type)) return undefined;
   (async () => {
     try {
-      if (!sender.tab?.id || !sender.tab.url?.startsWith("https://www.netflix.com/")) throw new Error("Capture is only available on Netflix");
+      if (!sender.tab?.id || !sender.tab.url?.startsWith("https://www.netflix.com/")) throw new Error("This action is only available on Netflix");
+      if (message.type === "FETCH_SUBTITLE") {
+        sendResponse({ ok: true, ...await fetchSubtitle(message.url) });
+        return;
+      }
       const dataUrl = await chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" });
       const likelyBlack = await detectBlackFrame(dataUrl);
       const downloadId = await chrome.downloads.download({

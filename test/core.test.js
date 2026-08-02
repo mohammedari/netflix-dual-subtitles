@@ -30,6 +30,8 @@ test("parses supported subtitle clock formats", () => {
   assert.equal(parseClock("01:02,250"), 62250);
   assert.equal(parseClock("2.5s"), 2500);
   assert.equal(parseClock("1250ms"), 1250);
+  assert.equal(parseClock("15000000t", { tickRate: 10000000 }), 1500);
+  assert.equal(parseClock("48f", { frameRate: 24 }), 2000);
 });
 
 test("parses WebVTT and strips markup", () => {
@@ -46,6 +48,14 @@ test("parses TTML end and duration cues", () => {
     { startMs: 1000, endMs: 2500, text: "こんにちは\n世界" },
     { startMs: 3000, endMs: 4000, text: "次" }
   ]);
+});
+
+test("parses Netflix-style TTML tick timing", () => {
+  const cues = parseSubtitle(`<?xml version="1.0"?><tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:tickRate="10000000"><body><div><p begin="14612515t" end="32565033t"><span>Are you looking?</span></p></div></body></tt>`, "application/ttml+xml");
+  assert.equal(cues.length, 1);
+  assert.ok(Math.abs(cues[0].startMs - 1461.2515) < 0.0001);
+  assert.ok(Math.abs(cues[0].endMs - 3256.5033) < 0.0001);
+  assert.equal(cues[0].text, "Are you looking?");
 });
 
 test("returns all overlapping cue text without duplicates", () => {

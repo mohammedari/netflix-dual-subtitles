@@ -53,7 +53,7 @@ npm run check
 npm run package
 ```
 
-`npm run package` は `release/netflix-dual-subtitles-v0.1.0.zip` と展開済みフォルダを生成します。
+`npm run package` はマニフェストのバージョンに合わせたZIP（現在は `release/netflix-dual-subtitles-v1.0.0.zip`）と展開済みフォルダを生成します。
 
 実Netflixでのリリース確認項目は [MANUAL_TESTS.md](MANUAL_TESTS.md) を参照してください。
 
@@ -61,6 +61,9 @@ npm run package
 
 - `storage`: ローカル設定の保存
 - `downloads`: PNGの保存
+- `activeTab`: ツールバーから有効化したNetflixタブのPNGキャプチャ
+- `<all_urls>`（任意）: `c` キーからのPNGキャプチャ。ポップアップで明示的に許可した場合だけ有効
 - `https://www.netflix.com/*`: 字幕表示、キー操作、表示中タブのキャプチャ
+- Netflix CDN（`nflxvideo.net`、`nflxso.net`、`nflximg.net`）: Netflixが提供する字幕ファイルの取得
 
 外部ホストへの通信、字幕の書き出し、閲覧履歴の取得、クラウド同期は行いません。

@@ -71,12 +71,14 @@ export function buildCaptureFilename({ folder, title, episode, currentTime, now 
   return `${sanitizeFolder(folder)}/${parts.join("_")}.png`;
 }
 
-export function parseClock(value) {
+export function parseClock(value, { tickRate = 1, frameRate = 30 } = {}) {
   const input = String(value || "").trim();
   if (!input) return NaN;
-  const unit = input.match(/^([\d.]+)(ms|s|m|h)$/i);
+  const unit = input.match(/^([\d.]+)(ms|s|m|h|f|t)$/i);
   if (unit) {
-    const multipliers = { ms: 1, s: 1000, m: 60000, h: 3600000 };
+    const safeTickRate = Number(tickRate) > 0 ? Number(tickRate) : 1;
+    const safeFrameRate = Number(frameRate) > 0 ? Number(frameRate) : 30;
+    const multipliers = { ms: 1, s: 1000, m: 60000, h: 3600000, f: 1000 / safeFrameRate, t: 1000 / safeTickRate };
     return Number(unit[1]) * multipliers[unit[2].toLowerCase()];
   }
   const parts = input.replace(",", ".").split(":").map(Number);
@@ -93,7 +95,7 @@ export function parseClock(value) {
 
 function cleanText(value) {
   return String(value || "")
-    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<(?:[\w-]+:)?br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
@@ -124,15 +126,19 @@ export function parseWebVtt(text) {
 }
 
 export function parseTtml(text) {
+  const input = String(text);
   const cues = [];
-  const paragraphPattern = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
-  for (const match of String(text).matchAll(paragraphPattern)) {
+  const tickRate = Number(input.match(/\b(?:ttp:)?tickRate=["']([\d.]+)["']/i)?.[1]) || 1;
+  const frameRate = Number(input.match(/\b(?:ttp:)?frameRate=["']([\d.]+)["']/i)?.[1]) || 30;
+  const paragraphPattern = /<(?:[\w-]+:)?p\b([^>]*)>([\s\S]*?)<\/(?:[\w-]+:)?p>/gi;
+  for (const match of input.matchAll(paragraphPattern)) {
     const attrs = match[1];
     const begin = attrs.match(/\bbegin=["']([^"']+)["']/i)?.[1];
     const end = attrs.match(/\bend=["']([^"']+)["']/i)?.[1];
     const duration = attrs.match(/\bdur=["']([^"']+)["']/i)?.[1];
-    const startMs = parseClock(begin);
-    const endMs = end ? parseClock(end) : startMs + parseClock(duration);
+    const clockOptions = { tickRate, frameRate };
+    const startMs = parseClock(begin, clockOptions);
+    const endMs = end ? parseClock(end, clockOptions) : startMs + parseClock(duration, clockOptions);
     const cueText = cleanText(match[2]);
     if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs && cueText) {
       cues.push({ startMs, endMs, text: cueText });

@@ -16,7 +16,6 @@ async function start(core) {
   let route = location.href;
   let capturedCueText = null;
   let sessionGeneration = 0;
-  const pendingRequests = new Map();
 
   function ensureOverlay() {
     if (overlay?.isConnected) return overlay;
@@ -53,7 +52,11 @@ async function start(core) {
     if (!view) return;
     view.style.display = settings.enabled ? "block" : "none";
     view._captions.className = `captions ${settings.position} ${settings.fontSize}`;
-    setNativeCaptionsHidden(settings.enabled);
+    updateNativeCaptionVisibility();
+  }
+
+  function updateNativeCaptionVisibility() {
+    setNativeCaptionsHidden(settings.enabled && Object.values(trackState).includes("ready"));
   }
 
   function setNativeCaptionsHidden(hidden) {
@@ -118,6 +121,7 @@ async function start(core) {
     currentTracks = [];
     trackState = { ja: "searching", en: "searching" };
     lastError = null;
+    updateNativeCaptionVisibility();
     window.postMessage({ source: MESSAGE_SOURCE, type: "REQUEST_TRACKS", payload: {} }, location.origin);
   }
 
@@ -127,33 +131,28 @@ async function start(core) {
     if (!track) {
       cuesByLanguage[language] = [];
       trackState[language] = "unavailable";
+      updateNativeCaptionVisibility();
       toast(`${language === "ja" ? "日本語" : "英語"}字幕を利用できません`);
       return;
     }
     trackState[language] = "loading";
-    const requestId = crypto.randomUUID();
-    const response = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pendingRequests.delete(requestId);
-        reject(new Error("Subtitle request timed out"));
-      }, 12000);
-      pendingRequests.set(requestId, (payload) => {
-        clearTimeout(timer);
-        payload.ok ? resolve(payload) : reject(new Error(payload.error || "Subtitle request failed"));
-      });
-    });
-    window.postMessage({ source: MESSAGE_SOURCE, type: "FETCH_SUBTITLE", payload: { requestId, url: track.url } }, location.origin);
     try {
-      const payload = await response;
+      const payload = await Promise.race([
+        chrome.runtime.sendMessage({ type: "FETCH_SUBTITLE", url: track.url }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Subtitle request timed out")), 12000))
+      ]);
+      if (!payload?.ok) throw new Error(payload?.error || "Subtitle request failed");
       const cues = parseSubtitle(payload.text, payload.contentType);
       if (!cues.length) throw new Error("Unsupported or empty subtitle format");
       if (generation !== sessionGeneration) return;
       cuesByLanguage[language] = cues;
       trackState[language] = "ready";
+      updateNativeCaptionVisibility();
     } catch (error) {
       if (generation !== sessionGeneration) return;
       cuesByLanguage[language] = [];
       trackState[language] = "error";
+      updateNativeCaptionVisibility();
       lastError = "SUBTITLE_LOAD_FAILED";
       toast(`${language === "ja" ? "日本語" : "英語"}字幕を取得できません`);
       console.warn("[Netflix Dual Subtitles]", error);
@@ -166,29 +165,29 @@ async function start(core) {
     if (type === "TRACKS_DISCOVERED") {
       currentTracks = Array.isArray(payload.tracks) ? payload.tracks : [];
       if (settings.enabled) Promise.allSettled([loadLanguage("ja"), loadLanguage("en")]);
-    } else if (type === "SUBTITLE_RESPONSE") {
-      const resolve = pendingRequests.get(payload.requestId);
-      if (resolve) {
-        pendingRequests.delete(payload.requestId);
-        resolve(payload);
-      }
     } else if (type === "BRIDGE_ERROR") {
       lastError = payload.code || "BRIDGE_ERROR";
     }
   }
 
+  function isVisible(element) {
+    if (!element || element.getAttribute("aria-hidden") === "true" || !element.getClientRects().length) return false;
+    const style = getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse";
+  }
+
   function isTypingOrDialog() {
     const active = document.activeElement;
     if (active && (active.matches("input, textarea, select, [contenteditable='true']") || active.closest("[role='dialog']"))) return true;
-    return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'));
+    return [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some(isVisible);
   }
 
   function seek(delta) {
-    const video = getVideo();
-    if (!video) return;
-    const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
-    video.currentTime = Math.min(duration, Math.max(0, video.currentTime + delta));
-    render();
+    window.postMessage({
+      source: MESSAGE_SOURCE,
+      type: "PLAYER_SHORTCUT",
+      payload: { action: delta < 0 ? "seek-backward" : "seek-forward" }
+    }, location.origin);
   }
 
   function togglePlayback() {
@@ -243,7 +242,9 @@ async function start(core) {
       toast(result.likelyBlack ? "保存しました（映像が黒い可能性があります）" : "スクリーンショットを保存しました");
     } catch (error) {
       lastError = "CAPTURE_FAILED";
-      toast("スクリーンショットを保存できませんでした");
+      toast(/activeTab|<all_urls>/i.test(String(error?.message || error))
+        ? "ポップアップでキャプチャ権限を許可してください"
+        : "スクリーンショットを保存できませんでした");
       console.warn("[Netflix Dual Subtitles]", error);
     } finally {
       capturedCueText = null;

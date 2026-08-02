@@ -3,6 +3,14 @@ import { DEFAULT_SETTINGS, normalizeSettings } from "../shared/core.js";
 const fieldIds = ["enabled", "upperLanguage", "fontSize", "position", "shortcutsEnabled", "downloadSubdirectory"];
 const elements = Object.fromEntries(fieldIds.map((id) => [id, document.getElementById(id)]));
 const statusElement = document.getElementById("status");
+const capturePermissionButton = document.getElementById("capturePermission");
+
+async function refreshCapturePermission() {
+  const granted = await chrome.permissions.contains({ origins: ["<all_urls>"] });
+  capturePermissionButton.textContent = granted ? "キャプチャ権限: 許可済み" : "キャプチャ権限を許可";
+  capturePermissionButton.classList.toggle("granted", granted);
+  capturePermissionButton.disabled = granted;
+}
 
 async function load() {
   const settings = normalizeSettings(await chrome.storage.local.get(DEFAULT_SETTINGS));
@@ -11,6 +19,11 @@ async function load() {
     else element.value = settings[key];
     element.addEventListener(element.type === "text" ? "change" : "input", save);
   }
+  capturePermissionButton.addEventListener("click", async () => {
+    await chrome.permissions.request({ origins: ["<all_urls>"] });
+    await refreshCapturePermission();
+  });
+  await refreshCapturePermission();
   refreshStatus();
 }
 

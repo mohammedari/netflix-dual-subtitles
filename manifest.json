@@ -1,11 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Netflix Dual Subtitles JKL Capture",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Show Japanese and English Netflix subtitles, control playback with J/K/L, and capture with C.",
   "minimum_chrome_version": "120",
-  "permissions": ["downloads", "storage"],
-  "host_permissions": ["https://www.netflix.com/*"],
+  "permissions": ["activeTab", "downloads", "storage"],
+  "host_permissions": [
+    "https://www.netflix.com/*",
+    "https://*.nflxvideo.net/*",
+    "https://*.nflxso.net/*",
+    "https://*.nflximg.net/*"
+  ],
+  "optional_host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
