@@ -1,0 +1,27 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+test("manifest is valid MV3 with narrowly scoped permissions", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
+  assert.equal(manifest.manifest_version, 3);
+  assert.deepEqual(manifest.permissions.sort(), ["downloads", "storage"]);
+  assert.deepEqual(manifest.host_permissions, ["https://www.netflix.com/*"]);
+  assert.equal(manifest.background.type, "module");
+  assert.ok(manifest.content_scripts.some((script) => script.world === "MAIN" && script.run_at === "document_start"));
+  assert.ok(manifest.content_scripts.some((script) => script.world === "ISOLATED"));
+});
+
+test("all manifest-referenced files exist", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
+  const paths = [
+    manifest.background.service_worker,
+    manifest.action.default_popup,
+    ...manifest.content_scripts.flatMap((script) => script.js),
+    ...manifest.web_accessible_resources.flatMap((resource) => resource.resources)
+  ];
+  for (const path of paths) {
+    const content = await readFile(new URL(`../${path}`, import.meta.url));
+    assert.ok(content.length > 0, `${path} should not be empty`);
+  }
+});

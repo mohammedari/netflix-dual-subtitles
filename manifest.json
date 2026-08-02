@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Netflix Dual Subtitles JK Capture",
+  "version": "0.1.0",
+  "description": "Show Japanese and English Netflix subtitles, seek with J/K, and capture with C.",
+  "minimum_chrome_version": "120",
+  "permissions": ["downloads", "storage"],
+  "host_permissions": ["https://www.netflix.com/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Netflix Dual Subtitles",
+    "default_popup": "src/popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.netflix.com/*"],
+      "js": ["src/page/bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.netflix.com/*"],
+      "js": ["src/content/content.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/shared/core.js"],
+      "matches": ["https://www.netflix.com/*"]
+    }
+  ]
+}
