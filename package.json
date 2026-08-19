@@ -1,11 +1,11 @@
 {
   "name": "netflix-dual-subtitles-jkl-capture",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/shared/core.js && node --check src/page/bridge.js && node --check src/content/content.js && node --check src/background/service-worker.js && node --check src/popup/popup.js",
+    "check": "node --check src/shared/core.js && node --check src/page/bridge.js && node --check src/page/disney-bridge.js && node --check src/content/content.js && node --check src/background/service-worker.js && node --check src/popup/popup.js",
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1"
   },
   "engines": {

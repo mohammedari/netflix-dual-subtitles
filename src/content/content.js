@@ -1,5 +1,5 @@
 import(chrome.runtime.getURL("src/shared/core.js")).then((core) => start(core)).catch((error) => {
-  console.error("[Netflix Dual Subtitles] failed to start", error);
+  console.error("[Dual Subtitles] failed to start", error);
 });
 
 async function start(core) {
@@ -16,6 +16,8 @@ async function start(core) {
   let route = location.href;
   let capturedCueText = null;
   let sessionGeneration = 0;
+  const service = location.hostname.endsWith("disneyplus.com") ? "disneyplus" : "netflix";
+  let playbackOffsetMs = 0;
 
   function ensureOverlay() {
     if (overlay?.isConnected) return overlay;
@@ -61,10 +63,21 @@ async function start(core) {
 
   function setNativeCaptionsHidden(hidden) {
     if (!document.documentElement) return;
+    if (overlay) {
+      overlay.dataset.jaState = trackState.ja;
+      overlay.dataset.enState = trackState.en;
+    }
+    if (service === "disneyplus") {
+      document.documentElement.classList.toggle("nds-enabled", Boolean(hidden));
+      window.postMessage({ source: MESSAGE_SOURCE, type: "NATIVE_CAPTIONS", payload: { hidden: Boolean(hidden) } }, location.origin);
+      return;
+    }
     if (!nativeStyle) {
       nativeStyle = document.createElement("style");
       nativeStyle.id = "netflix-dual-subtitles-native-style";
-      nativeStyle.textContent = `html.nds-enabled .player-timedtext, html.nds-enabled [data-uia="player-subtitle-text"] { visibility: hidden !important; }`;
+      nativeStyle.textContent = service === "disneyplus"
+        ? `html.nds-enabled .dss-hls-subtitle-overlay { visibility: hidden !important; }`
+        : `html.nds-enabled .player-timedtext, html.nds-enabled [data-uia="player-subtitle-text"] { visibility: hidden !important; }`;
       document.documentElement.appendChild(nativeStyle);
     }
     document.documentElement.classList.toggle("nds-enabled", Boolean(hidden));
@@ -92,11 +105,13 @@ async function start(core) {
     const view = ensureOverlay();
     const video = getVideo();
     if (!view || !video) return;
-    const timeMs = video.currentTime * 1000;
+    const timeMs = playbackTimeMs(video);
     const text = capturedCueText || {
       ja: activeCueText(cuesByLanguage.ja, timeMs),
       en: activeCueText(cuesByLanguage.en, timeMs)
     };
+    view.dataset.jaActive = String(Boolean(text.ja));
+    view.dataset.enActive = String(Boolean(text.en));
     const upper = settings.upperLanguage;
     const lower = upper === "ja" ? "en" : "ja";
     setLine(view._upper, upper, text[upper]);
@@ -110,6 +125,10 @@ async function start(core) {
     element.classList.toggle("visible", Boolean(text));
   }
 
+  function playbackTimeMs(video) {
+    return (video.currentTime * 1000) + playbackOffsetMs;
+  }
+
   function animationLoop() {
     render();
     renderFrame = requestAnimationFrame(animationLoop);
@@ -121,6 +140,7 @@ async function start(core) {
     currentTracks = [];
     trackState = { ja: "searching", en: "searching" };
     lastError = null;
+    playbackOffsetMs = 0;
     updateNativeCaptionVisibility();
     window.postMessage({ source: MESSAGE_SOURCE, type: "REQUEST_TRACKS", payload: {} }, location.origin);
   }
@@ -155,7 +175,7 @@ async function start(core) {
       updateNativeCaptionVisibility();
       lastError = "SUBTITLE_LOAD_FAILED";
       toast(`${language === "ja" ? "日本語" : "英語"}字幕を取得できません`);
-      console.warn("[Netflix Dual Subtitles]", error);
+      console.warn("[Dual Subtitles]", error);
     }
   }
 
@@ -163,11 +183,37 @@ async function start(core) {
     if (event.source !== window || event.origin !== location.origin || event.data?.source !== MESSAGE_SOURCE) return;
     const { type, payload = {} } = event.data;
     if (type === "TRACKS_DISCOVERED") {
-      currentTracks = Array.isArray(payload.tracks) ? payload.tracks : [];
+      currentTracks = validatedTracks(payload.tracks);
       if (settings.enabled) Promise.allSettled([loadLanguage("ja"), loadLanguage("en")]);
+    } else if (type === "PLAYBACK_CLOCK") {
+      const offsetMs = Number(payload.offsetMs);
+      if (Number.isFinite(offsetMs) && Math.abs(offsetMs) <= 86_400_000) playbackOffsetMs = offsetMs;
     } else if (type === "BRIDGE_ERROR") {
-      lastError = payload.code || "BRIDGE_ERROR";
+      lastError = typeof payload.code === "string" && payload.code.length <= 80 ? payload.code : "BRIDGE_ERROR";
     }
+  }
+
+  function validatedTracks(value) {
+    if (!Array.isArray(value)) return [];
+    const tracks = [];
+    for (const track of value.slice(0, 100)) {
+      if (!track || typeof track !== "object") continue;
+      const language = typeof track.language === "string" ? track.language.slice(0, 35).toLowerCase() : "";
+      if (!language || typeof track.url !== "string") continue;
+      try {
+        const url = new URL(track.url);
+        if (url.protocol !== "https:") continue;
+        tracks.push({
+          id: String(track.id || `${language}:${url.href}`).slice(0, 500),
+          language,
+          label: String(track.label || language).slice(0, 100),
+          isForced: track.isForced === true,
+          isSdh: track.isSdh === true,
+          url: url.href
+        });
+      } catch {}
+    }
+    return tracks;
   }
 
   function isVisible(element) {
@@ -197,7 +243,7 @@ async function start(core) {
       video.play().catch((error) => {
         lastError = "PLAYBACK_FAILED";
         toast("再生できませんでした");
-        console.warn("[Netflix Dual Subtitles]", error);
+        console.warn("[Dual Subtitles]", error);
       });
     } else {
       video.pause();
@@ -205,10 +251,12 @@ async function start(core) {
   }
 
   function extractMetadata() {
+    const videoTitle = getVideo()?.getAttribute("aria-label")?.trim();
     const title = document.querySelector('[data-uia="video-title"]')?.textContent?.trim()
       || document.querySelector(".ellipsize-text h4")?.textContent?.trim()
-      || document.title.replace(/\s*-\s*Netflix\s*$/i, "").trim()
-      || "netflix_capture";
+      || videoTitle
+      || document.title.replace(/\s*[|\-]\s*(?:Netflix|Disney\+.*)$/i, "").trim()
+      || "capture";
     const episode = document.querySelector('[data-uia="video-title"] span')?.textContent?.trim()
       || document.querySelector(".ellipsize-text")?.textContent?.replace(title, "").trim()
       || "";
@@ -220,8 +268,8 @@ async function start(core) {
     if (!video) return;
     const wasPlaying = !video.paused && !video.ended;
     capturedCueText = {
-      ja: activeCueText(cuesByLanguage.ja, video.currentTime * 1000),
-      en: activeCueText(cuesByLanguage.en, video.currentTime * 1000)
+      ja: activeCueText(cuesByLanguage.ja, playbackTimeMs(video)),
+      en: activeCueText(cuesByLanguage.en, playbackTimeMs(video))
     };
     if (wasPlaying) video.pause();
     render();
@@ -231,7 +279,7 @@ async function start(core) {
       folder: settings.downloadSubdirectory,
       title,
       episode,
-      currentTime: video.currentTime
+      currentTime: playbackTimeMs(video) / 1000
     });
     try {
       const result = await Promise.race([
@@ -245,7 +293,7 @@ async function start(core) {
       toast(/activeTab|<all_urls>/i.test(String(error?.message || error))
         ? "ポップアップでキャプチャ権限を許可してください"
         : "スクリーンショットを保存できませんでした");
-      console.warn("[Netflix Dual Subtitles]", error);
+      console.warn("[Dual Subtitles]", error);
     } finally {
       capturedCueText = null;
       if (wasPlaying && video.paused && !video.ended) video.play().catch(() => {});
@@ -268,6 +316,7 @@ async function start(core) {
   function publicStatus() {
     return {
       enabled: settings.enabled,
+      service,
       playerFound,
       trackState,
       availableLanguages: [...new Set(currentTracks.map((track) => track.language))],
@@ -303,6 +352,9 @@ async function start(core) {
   window.addEventListener("pagehide", () => {
     cancelAnimationFrame(renderFrame);
     observer.disconnect();
+    if (service === "disneyplus") {
+      window.postMessage({ source: MESSAGE_SOURCE, type: "NATIVE_CAPTIONS", payload: { hidden: false } }, location.origin);
+    }
     document.documentElement.classList.remove("nds-enabled");
   }, { once: true });
 }

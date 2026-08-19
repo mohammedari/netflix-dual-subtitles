@@ -19,5 +19,5 @@ if not "%PACKAGE_EXIT_CODE%"=="0" (
 )
 
 echo [OK] Package creation completed.
-echo [OK] Output: %~dp0release\netflix-dual-subtitles-v0.1.0.zip
+echo [OK] Output directory: %~dp0release
 exit /b 0

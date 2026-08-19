@@ -8,6 +8,7 @@ import {
   isLikelyBlackFrame,
   normalizeSettings,
   parseClock,
+  parseHlsSubtitleSegmentUrls,
   parseSubtitle,
   sanitizeFolder,
   shortcutAction
@@ -42,6 +43,38 @@ test("parses WebVTT and strips markup", () => {
   ]);
 });
 
+test("maps segmented HLS WebVTT cues onto the media timeline", () => {
+  const cues = parseSubtitle(`WEBVTT
+X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:180000
+
+00:00:01.000 --> 00:00:02.500
+First
+
+WEBVTT
+X-TIMESTAMP-MAP=MPEGTS:450000,LOCAL:00:00:00.000
+
+00:00:00.500 --> 00:00:01.500
+Second`, "text/vtt");
+  assert.deepEqual(cues, [
+    { startMs: 3000, endMs: 4500, text: "First" },
+    { startMs: 5500, endMs: 6500, text: "Second" }
+  ]);
+});
+
+test("resolves only HTTPS WebVTT segments from an HLS media playlist", () => {
+  const urls = parseHlsSubtitleSegmentUrls(`#EXTM3U
+#EXTINF:6.0,
+segment-1.vtt
+#EXTINF:6.0,
+https://cdn.example/segment-2.vtt?token=sanitized
+#EXTINF:6.0,
+segment.mp4`, "https://cdn.example/path/subtitles.m3u8?token=sanitized");
+  assert.deepEqual(urls, [
+    "https://cdn.example/path/segment-1.vtt",
+    "https://cdn.example/segment-2.vtt?token=sanitized"
+  ]);
+});
+
 test("parses TTML end and duration cues", () => {
   const cues = parseSubtitle(`<tt><body><div><p begin="1s" end="2.5s">こんにちは<br/>世界</p><p begin="3s" dur="1s">次</p></div></body></tt>`, "application/ttml+xml");
   assert.deepEqual(cues, [
@@ -68,10 +101,11 @@ test("returns all overlapping cue text without duplicates", () => {
   assert.equal(activeCueText(cues, 3500), "");
 });
 
-test("prefers exact language and non-SDH tracks", () => {
+test("prefers exact language, non-forced, and non-SDH tracks", () => {
   const tracks = [
     { language: "en-US", isSdh: false, url: "https://example/en-us" },
     { language: "en", isSdh: true, url: "https://example/en-sdh" },
+    { language: "en", isForced: true, url: "https://example/en-forced" },
     { language: "en", isSdh: false, url: "https://example/en" }
   ];
   assert.equal(chooseTrack(tracks, "en").url, "https://example/en");
@@ -83,7 +117,7 @@ test("normalizes invalid settings and download paths", () => {
   assert.equal(settings.fontSize, DEFAULT_SETTINGS.fontSize);
   assert.equal(settings.position, DEFAULT_SETTINGS.position);
   assert.equal(settings.downloadSubdirectory, "Bad__Folder");
-  assert.equal(sanitizeFolder(""), "Netflix Captures");
+  assert.equal(sanitizeFolder(""), "Dual Subtitle Captures");
   const filename = buildCaptureFilename({
     folder: "Netflix Captures",
     title: "Bad: Title?",

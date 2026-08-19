@@ -46,14 +46,15 @@ async function refreshStatus() {
     if (!tab?.id) throw new Error("no tab");
     const status = await chrome.tabs.sendMessage(tab.id, { type: "GET_STATUS" });
     if (!status.playerFound) {
-      showStatus("Netflixの動画を再生してください。", "warning");
+      showStatus("NetflixまたはDisney+の動画を再生してください。", "warning");
       return;
     }
     const names = { ready: "取得済み", loading: "取得中", searching: "検索中", unavailable: "利用不可", error: "エラー" };
-    const text = `プレイヤー検出済み\n日本語: ${names[status.trackState.ja]} / 英語: ${names[status.trackState.en]}`;
+    const serviceName = status.service === "disneyplus" ? "Disney+" : "Netflix";
+    const text = `${serviceName}プレイヤー検出済み\n日本語: ${names[status.trackState.ja]} / 英語: ${names[status.trackState.en]}`;
     showStatus(text, status.lastError ? "error" : (status.trackState.ja === "ready" && status.trackState.en === "ready" ? "ready" : "warning"));
   } catch {
-    showStatus("Netflixのページで使用できます。", "warning");
+    showStatus("NetflixまたはDisney+のページで使用できます。", "warning");
   }
 }
 

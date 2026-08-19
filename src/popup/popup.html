@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Netflix Dual Subtitles</title>
+  <title>Netflix &amp; Disney+ Dual Subtitles</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header><h1>Netflix Dual Subtitles</h1><label class="switch"><input id="enabled" type="checkbox"><span>有効</span></label></header>
-  <div id="status" class="status">Netflixプレイヤーを確認中…</div>
+  <header><h1>Dual Subtitles</h1><label class="switch"><input id="enabled" type="checkbox"><span>有効</span></label></header>
+  <div id="status" class="status">プレイヤーを確認中…</div>
   <label>上段の言語<select id="upperLanguage"><option value="ja">日本語</option><option value="en">英語</option></select></label>
   <label>文字サイズ<select id="fontSize"><option value="small">小</option><option value="medium">中</option><option value="large">大</option></select></label>
   <label>表示位置<select id="position"><option value="top">上</option><option value="center">中央</option><option value="bottom">下</option></select></label>
   <label class="switch"><input id="shortcutsEnabled" type="checkbox"><span>j / k / l / c キーを有効化</span></label>
   <button id="capturePermission" type="button">キャプチャ権限を許可</button>
-  <label>保存先（Downloads配下）<input id="downloadSubdirectory" type="text" maxlength="80" placeholder="Netflix Captures"></label>
+  <label>保存先（Downloads配下）<input id="downloadSubdirectory" type="text" maxlength="80" placeholder="Dual Subtitle Captures"></label>
   <p class="help">j: 10秒戻る　k: 再生・一時停止　l: 10秒進む　c: PNG保存<br>cは初回のみキャプチャ権限の許可が必要です。</p>
   <script type="module" src="popup.js"></script>
 </body>

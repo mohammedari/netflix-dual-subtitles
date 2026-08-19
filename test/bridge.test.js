@@ -107,6 +107,6 @@ test("bridge resolves current encrypted-manifest tracks from player state", asyn
   const bridge = await loadBridge({}, { netflix, schedule: (callback) => setImmediate(callback) });
   await new Promise((resolve) => setImmediate(resolve));
   const discovery = bridge.posted.find((message) => message.type === "TRACKS_DISCOVERED");
-  assert.deepEqual(discovery.payload.tracks.map((track) => track.language), ["ja", "en"]);
+  assert.deepEqual(Array.from(discovery.payload.tracks, (track) => track.language), ["ja", "en"]);
   assert.equal(activeTrack.trackId, "none");
 });

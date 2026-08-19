@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Netflix Dual Subtitles JKL Capture",
-  "version": "1.0.0",
-  "description": "Show Japanese and English Netflix subtitles, control playback with J/K/L, and capture with C.",
+  "name": "Netflix & Disney+ Dual Subtitles",
+  "version": "1.1.0",
+  "description": "Show Japanese and English subtitles on Netflix and Disney+, control playback with J/K/L, and capture with C.",
   "minimum_chrome_version": "120",
   "permissions": ["activeTab", "downloads", "storage"],
   "host_permissions": [
     "https://www.netflix.com/*",
     "https://*.nflxvideo.net/*",
     "https://*.nflxso.net/*",
-    "https://*.nflximg.net/*"
+    "https://*.nflximg.net/*",
+    "https://www.disneyplus.com/*",
+    "https://*.media.dssott.com/*"
   ],
   "optional_host_permissions": ["<all_urls>"],
   "background": {
@@ -17,7 +19,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Netflix Dual Subtitles",
+    "default_title": "Netflix & Disney+ Dual Subtitles",
     "default_popup": "src/popup/popup.html"
   },
   "content_scripts": [
@@ -28,7 +30,13 @@
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.netflix.com/*"],
+      "matches": ["https://www.disneyplus.com/*"],
+      "js": ["src/page/disney-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.netflix.com/*", "https://www.disneyplus.com/*"],
       "js": ["src/content/content.js"],
       "run_at": "document_start",
       "world": "ISOLATED"
@@ -37,7 +45,7 @@
   "web_accessible_resources": [
     {
       "resources": ["src/shared/core.js"],
-      "matches": ["https://www.netflix.com/*"]
+      "matches": ["https://www.netflix.com/*", "https://www.disneyplus.com/*"]
     }
   ]
 }

@@ -6,7 +6,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   fontSize: "medium",
   position: "bottom",
   shortcutsEnabled: true,
-  downloadSubdirectory: "Netflix Captures"
+  downloadSubdirectory: "Dual Subtitle Captures"
 });
 
 export function normalizeSettings(value = {}) {
@@ -42,12 +42,12 @@ export function sanitizeFolder(value) {
 }
 
 export function sanitizeFilename(value) {
-  return String(value || "netflix_capture")
+  return String(value || "capture")
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
     .replace(/\s+/g, " ")
     .replace(/[. ]+$/g, "")
     .trim()
-    .slice(0, 120) || "netflix_capture";
+    .slice(0, 120) || "capture";
 }
 
 export function formatMediaTime(seconds) {
@@ -108,21 +108,41 @@ function cleanText(value) {
 
 export function parseWebVtt(text) {
   const normalized = String(text).replace(/^\uFEFF/, "").replace(/\r/g, "");
-  const blocks = normalized.split(/\n{2,}/);
   const cues = [];
-  for (const block of blocks) {
-    const lines = block.trim().split("\n");
-    const timingIndex = lines.findIndex((line) => line.includes("-->"));
-    if (timingIndex < 0) continue;
-    const [rawStart, rawEnd] = lines[timingIndex].split("-->");
-    const startMs = parseClock(rawStart.trim());
-    const endMs = parseClock(rawEnd.trim().split(/\s+/)[0]);
-    const cueText = cleanText(lines.slice(timingIndex + 1).join("\n"));
-    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs && cueText) {
-      cues.push({ startMs, endMs, text: cueText });
+  const documents = normalized.split(/(?=^WEBVTT(?:[ \t]|$))/m).filter((document) => document.trim());
+  for (const document of documents.length ? documents : [normalized]) {
+    const local = document.match(/X-TIMESTAMP-MAP[^\n]*\bLOCAL:([^,\s]+)/i)?.[1];
+    const mpegTs = Number(document.match(/X-TIMESTAMP-MAP[^\n]*\bMPEGTS:(\d+)/i)?.[1]);
+    const localMs = parseClock(local);
+    const offsetMs = Number.isFinite(mpegTs) && Number.isFinite(localMs) ? (mpegTs / 90) - localMs : 0;
+    for (const block of document.split(/\n{2,}/)) {
+      const lines = block.trim().split("\n");
+      const timingIndex = lines.findIndex((line) => line.includes("-->"));
+      if (timingIndex < 0) continue;
+      const [rawStart, rawEnd] = lines[timingIndex].split("-->");
+      const startMs = parseClock(rawStart.trim()) + offsetMs;
+      const endMs = parseClock(rawEnd.trim().split(/\s+/)[0]) + offsetMs;
+      const cueText = cleanText(lines.slice(timingIndex + 1).join("\n"));
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs && cueText) {
+        cues.push({ startMs, endMs, text: cueText });
+      }
     }
   }
-  return cues.sort((a, b) => a.startMs - b.startMs);
+  return [...new Map(cues.map((cue) => [`${cue.startMs}|${cue.endMs}|${cue.text}`, cue])).values()]
+    .sort((a, b) => a.startMs - b.startMs);
+}
+
+export function parseHlsSubtitleSegmentUrls(text, baseUrl) {
+  const urls = [];
+  for (const line of String(text || "").replace(/\r/g, "").split("\n")) {
+    const value = line.trim();
+    if (!value || value.startsWith("#")) continue;
+    try {
+      const parsed = new URL(value, baseUrl);
+      if (parsed.protocol === "https:" && /\.vtt$/i.test(parsed.pathname)) urls.push(parsed.href);
+    } catch {}
+  }
+  return [...new Set(urls)];
 }
 
 export function parseTtml(text) {
@@ -191,6 +211,8 @@ export function chooseTrack(tracks, desiredLanguage) {
     .sort((a, b) => {
       const languageDifference = languageRank(a, desiredLanguage) - languageRank(b, desiredLanguage);
       if (languageDifference) return languageDifference;
+      const forcedDifference = Number(Boolean(a.isForced)) - Number(Boolean(b.isForced));
+      if (forcedDifference) return forcedDifference;
       return Number(Boolean(a.isSdh)) - Number(Boolean(b.isSdh));
     })[0] || null;
 }
