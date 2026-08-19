@@ -10,9 +10,12 @@
   let lastRoute = location.href;
   let lastClockOffset = null;
   let lastPresentationTimeMs = null;
+  let clockTimer = null;
+  let scheduledClockForce = false;
   let nativeCaptionsHidden = false;
   const inspectedPlaylists = new Set();
   const playerShadowRoots = new Set();
+  const observedVideos = new WeakSet();
 
   const emit = (type, payload = {}) => window.postMessage({ source: SOURCE, type, payload }, location.origin);
 
@@ -31,7 +34,19 @@
 
   function setNativeCaptionsHidden(hidden) {
     nativeCaptionsHidden = Boolean(hidden);
-    for (const root of playerShadowRoots) updateShadowCaptionStyle(root);
+    for (const root of activePlayerRoots().slice(1)) updateShadowCaptionStyle(root);
+  }
+
+  function activePlayerRoots() {
+    const roots = [document];
+    for (const root of playerShadowRoots) {
+      if (root.host?.isConnected === false) {
+        playerShadowRoots.delete(root);
+        continue;
+      }
+      roots.push(root);
+    }
+    return roots;
   }
 
   const originalAttachShadow = globalThis.Element?.prototype?.attachShadow;
@@ -129,6 +144,9 @@
     lastTracks = [];
     lastClockOffset = null;
     lastPresentationTimeMs = null;
+    if (clockTimer) clearTimeout(clockTimer);
+    clockTimer = null;
+    scheduledClockForce = false;
     inspectedPlaylists.clear();
   }
 
@@ -175,24 +193,52 @@
     }
   }
 
-  function dispatchPlayerKey(key) {
+  function dispatchPlayerKey(key, target = null) {
     const code = key === "ArrowLeft" ? 37 : 39;
     const event = new KeyboardEvent("keydown", { key, code: key, bubbles: true, cancelable: true });
     Object.defineProperties(event, {
       keyCode: { value: code },
       which: { value: code }
     });
-    (document.activeElement || document.body || window).dispatchEvent(event);
+    (target || document.activeElement || document.body || window).dispatchEvent(event);
+  }
+
+  function seekWithPlayerControl(action) {
+    const roots = activePlayerRoots();
+    const directionPattern = action === "seek-backward" ? /前|戻|back|rewind/i : /先|進|forward/i;
+    const controls = roots.flatMap((root) => [...(root.querySelectorAll?.("[aria-label]") || [])]);
+    const button = controls.find((element) => {
+      const label = element.getAttribute?.("aria-label") || "";
+      return /(?:10|１０)/.test(label) && directionPattern.test(label) && element.getAttribute?.("aria-disabled") !== "true";
+    });
+    if (button?.click) {
+      button.click();
+      return;
+    }
+
+    const timeline = roots
+      .flatMap((root) => [...(root.querySelectorAll?.('[aria-valuenow][aria-valuemax]') || [])])
+      .map((element) => ({ element, maximum: Number(element.getAttribute("aria-valuemax")) }))
+      .filter(({ maximum }) => Number.isFinite(maximum) && maximum > 60)
+      .sort((a, b) => b.maximum - a.maximum)[0]?.element;
+    dispatchPlayerKey(action === "seek-backward" ? "ArrowLeft" : "ArrowRight", timeline);
   }
 
   function activeVideo() {
-    return [...document.querySelectorAll("video")]
+    const video = [...document.querySelectorAll("video")]
       .sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight))[0] || null;
+    if (video && !observedVideos.has(video)) {
+      observedVideos.add(video);
+      for (const type of ["seeked", "loadedmetadata", "durationchange"]) {
+        video.addEventListener?.(type, () => schedulePlaybackClock(100, true));
+      }
+    }
+    return video;
   }
 
   function timelinePresentationTimeMs() {
     const selector = '[aria-valuenow][aria-valuemax]';
-    const roots = [document, ...playerShadowRoots];
+    const roots = activePlayerRoots();
     const elements = roots.flatMap((root) => [...(root.querySelectorAll?.(selector) || [])]);
     const candidates = elements
       .map((element) => ({
@@ -204,20 +250,39 @@
     return candidates.length ? candidates[0].current * 1000 : NaN;
   }
 
-  function publishPlaybackClock() {
+  function publishPlaybackClock(force = false) {
     const video = activeVideo();
     const status = document.querySelector(".text-to-speech-status")?.textContent || "";
     const values = status.match(/\d{4,}/g) || [];
     const timelineTimeMs = timelinePresentationTimeMs();
     const statusTimeMs = Number(values.at(-1));
-    const presentationTimeMs = Number.isFinite(timelineTimeMs) ? timelineTimeMs : statusTimeMs;
+    const hasTimelineTime = Number.isFinite(timelineTimeMs);
+    const presentationTimeMs = hasTimelineTime ? timelineTimeMs : statusTimeMs;
     if (!video || !Number.isFinite(video.currentTime) || !Number.isFinite(presentationTimeMs)) return;
-    if (presentationTimeMs === lastPresentationTimeMs) return;
+    if (video.seeking) {
+      schedulePlaybackClock(100);
+      return;
+    }
+    // The accessibility status often stays at the reload position after seeking.
+    // Only a real player timeline may correct an already-published presentation time.
+    if (presentationTimeMs === lastPresentationTimeMs && !(force && hasTimelineTime)) return;
     lastPresentationTimeMs = presentationTimeMs;
-    const offsetMs = Math.round(presentationTimeMs - (video.currentTime * 1000));
+    const videoTimeMs = video.currentTime * 1000;
+    const offsetMs = Math.round(presentationTimeMs - videoTimeMs);
     if (Math.abs(offsetMs) > 86_400_000 || offsetMs === lastClockOffset) return;
     lastClockOffset = offsetMs;
-    emit("PLAYBACK_CLOCK", { offsetMs });
+    emit("PLAYBACK_CLOCK", { presentationTimeMs, videoTimeMs, offsetMs });
+  }
+
+  function schedulePlaybackClock(delayMs = 100, force = false) {
+    scheduledClockForce ||= force;
+    if (clockTimer) clearTimeout(clockTimer);
+    clockTimer = setTimeout(() => {
+      clockTimer = null;
+      const publishForced = scheduledClockForce;
+      scheduledClockForce = false;
+      publishPlaybackClock(publishForced);
+    }, delayMs);
   }
 
   window.addEventListener("message", (event) => {
@@ -229,15 +294,14 @@
       setNativeCaptionsHidden(event.data.payload?.hidden === true);
     } else if (event.data.type === "PLAYER_SHORTCUT") {
       const action = event.data.payload?.action;
-      if (action === "seek-backward") dispatchPlayerKey("ArrowLeft");
-      if (action === "seek-forward") dispatchPlayerKey("ArrowRight");
+      if (action === "seek-backward" || action === "seek-forward") seekWithPlayerControl(action);
     }
   });
 
   emit("BRIDGE_READY");
-  const clockObserver = new MutationObserver(publishPlaybackClock);
+  const clockObserver = new MutationObserver(() => schedulePlaybackClock(100));
   if (document.documentElement) clockObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   setTimeout(discoverObservedPlaylists, 0);
   setTimeout(publishPlaybackClock, 0);
-  setInterval(publishPlaybackClock, 1000);
+  setInterval(() => schedulePlaybackClock(100), 1000);
 })();

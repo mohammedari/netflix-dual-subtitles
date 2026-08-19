@@ -18,6 +18,7 @@ async function start(core) {
   let sessionGeneration = 0;
   const service = location.hostname.endsWith("disneyplus.com") ? "disneyplus" : "netflix";
   let playbackOffsetMs = 0;
+  let disneyPlaybackAnchor = null;
   let disneyTimelineElement = null;
   let lastDisneyTimelineTimeMs = null;
   let disneyClockTimer = null;
@@ -41,6 +42,7 @@ async function start(core) {
 
   function timelineTimeMs(element) {
     if (!element?.getAttribute) return NaN;
+    if (element.isConnected === false || element.getRootNode?.().host?.isConnected === false) return NaN;
     const current = Number(element.getAttribute("aria-valuenow"));
     const maximum = Number(element.getAttribute("aria-valuemax"));
     return Number.isFinite(current) && Number.isFinite(maximum) && maximum > 60 && current >= 0 && current <= maximum
@@ -61,11 +63,13 @@ async function start(core) {
       presentationTimeMs = candidates[0]?.timeMs ?? NaN;
     }
     const video = getVideo();
-    if (!video || !Number.isFinite(presentationTimeMs)) return;
+    if (!video || video.seeking || !Number.isFinite(presentationTimeMs)) return;
     if (presentationTimeMs === lastDisneyTimelineTimeMs) return;
     lastDisneyTimelineTimeMs = presentationTimeMs;
-    const offsetMs = Math.round(presentationTimeMs - (video.currentTime * 1000));
-    if (Math.abs(offsetMs) <= 86_400_000) playbackOffsetMs = offsetMs;
+    const videoTimeMs = video.currentTime * 1000;
+    if (Math.abs(presentationTimeMs - videoTimeMs) <= 86_400_000) {
+      disneyPlaybackAnchor = { presentationTimeMs, videoTimeMs };
+    }
   }
 
   function setDisneyNativeCaptionsHidden(hidden) {
@@ -190,6 +194,9 @@ async function start(core) {
   }
 
   function playbackTimeMs(video) {
+    if (service === "disneyplus" && disneyPlaybackAnchor) {
+      return disneyPlaybackAnchor.presentationTimeMs + ((video.currentTime * 1000) - disneyPlaybackAnchor.videoTimeMs);
+    }
     return (video.currentTime * 1000) + playbackOffsetMs;
   }
 
@@ -205,6 +212,7 @@ async function start(core) {
     trackState = { ja: "searching", en: "searching" };
     lastError = null;
     playbackOffsetMs = 0;
+    disneyPlaybackAnchor = null;
     disneyTimelineElement = null;
     lastDisneyTimelineTimeMs = null;
     updateNativeCaptionVisibility();
@@ -252,8 +260,15 @@ async function start(core) {
       currentTracks = validatedTracks(payload.tracks);
       if (settings.enabled) Promise.allSettled([loadLanguage("ja"), loadLanguage("en")]);
     } else if (type === "PLAYBACK_CLOCK") {
+      const presentationTimeMs = Number(payload.presentationTimeMs);
+      const videoTimeMs = Number(payload.videoTimeMs);
       const offsetMs = Number(payload.offsetMs);
-      if (Number.isFinite(offsetMs) && Math.abs(offsetMs) <= 86_400_000) playbackOffsetMs = offsetMs;
+      if (Number.isFinite(presentationTimeMs) && Number.isFinite(videoTimeMs)
+        && Math.abs(presentationTimeMs - videoTimeMs) <= 86_400_000) {
+        disneyPlaybackAnchor = { presentationTimeMs, videoTimeMs };
+      } else if (Number.isFinite(offsetMs) && Math.abs(offsetMs) <= 86_400_000) {
+        playbackOffsetMs = offsetMs;
+      }
     } else if (type === "BRIDGE_ERROR") {
       lastError = typeof payload.code === "string" && payload.code.length <= 80 ? payload.code : "BRIDGE_ERROR";
     }
