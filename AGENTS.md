@@ -9,7 +9,7 @@ The supported production environment is the latest Google Chrome on Windows. Bot
 ## Repository layout
 
 - `manifest.json`: extension entry point and permissions.
-- `src/page/bridge.js`: runs in the page's `MAIN` world and observes Netflix manifest/subtitle traffic.
+- `src/page/netflix-bridge.js`: runs in the page's `MAIN` world and observes Netflix manifest/subtitle traffic.
 - `src/page/disney-bridge.js`: runs in the page's `MAIN` world and discovers Disney+ HLS subtitle playlists.
 - `src/content/content.js`: runs in the extension's isolated world; renders subtitles and handles `j`/`k`/`c`.
 - `src/background/service-worker.js`: captures the visible tab, detects likely black frames, and downloads PNG files.
@@ -35,7 +35,7 @@ Run `npm test` and `npm run check` after every code change. Run `npm run package
 ## Architecture rules
 
 - Keep the extension build-free ES Modules unless the user explicitly approves a toolchain change.
-- Keep Netflix-specific, undocumented behavior inside `src/page/bridge.js` and Disney+-specific behavior inside `src/page/disney-bridge.js`; do not leak internal player assumptions into shared modules or popup code.
+- Keep Netflix-specific, undocumented behavior inside `src/page/netflix-bridge.js` and Disney+-specific behavior inside `src/page/disney-bridge.js`; do not leak internal player assumptions into shared modules or popup code.
 - The `MAIN`-world bridge must not use Chrome extension APIs. Pass schema-validated data to the isolated content script through `window.postMessage`.
 - Treat messages from the page as untrusted. Validate message source, origin, type, request IDs, URLs, and payload shape before acting.
 - Subtitle fetches must remain HTTPS-only and restricted to the Netflix CDN allowlist plus Disney+'s `media.dssott.com` subtitle hosts.

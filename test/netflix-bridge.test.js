@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { readFile } from "node:fs/promises";
 
 async function loadBridge(manifest, { netflix = null, schedule = () => 0 } = {}) {
-  const source = await readFile(new URL("../src/page/bridge.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/page/netflix-bridge.js", import.meta.url), "utf8");
   const posted = [];
   const listeners = new Map();
   const dispatchedKeys = [];

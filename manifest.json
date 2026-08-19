@@ -25,7 +25,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.netflix.com/*"],
-      "js": ["src/page/bridge.js"],
+      "js": ["src/page/netflix-bridge.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },

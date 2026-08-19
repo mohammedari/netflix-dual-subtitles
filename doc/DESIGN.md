@@ -47,7 +47,7 @@ Netflix連携には公開APIではなく、Netflixページのレスポンスと
 
 ### 4.2 Netflix依存処理の隔離
 
-非公開プレイヤーAPI、マニフェスト形状、Netflix内部オブジェクトの探索、ネイティブなシーク操作は `src/page/bridge.js` に集約する。それ以外のモジュールはNetflix内部構造を前提にしない。
+非公開プレイヤーAPI、マニフェスト形状、Netflix内部オブジェクトの探索、ネイティブなシーク操作は `src/page/netflix-bridge.js` に集約する。それ以外のモジュールはNetflix内部構造を前提にしない。
 
 ### 4.3 実行コンテキスト間の最小通信
 
@@ -70,7 +70,7 @@ Netflix内遷移やエピソード変更時に世代番号を更新し、古い�
 ```mermaid
 flowchart LR
     N[Netflixページ / プレイヤー]
-    B[MAIN world\nbridge.js]
+    B[MAIN world\nnetflix-bridge.js]
     C[ISOLATED world\ncontent.js]
     S[Service Worker\nservice-worker.js]
     P[Popup\npopup.html / popup.js]
@@ -98,7 +98,7 @@ flowchart LR
 | コンポーネント | 実行場所 | 主な責務 |
 | --- | --- | --- |
 | `manifest.json` | Chrome | 権限、コンテンツスクリプト、Service Worker、Popupの宣言 |
-| `src/page/bridge.js` | ページのMAIN world | Netflixマニフェスト観測、内部プレイヤーからのトラック解決、Netflixネイティブシーク |
+| `src/page/netflix-bridge.js` | ページのMAIN world | Netflixマニフェスト観測、内部プレイヤーからのトラック解決、Netflixネイティブシーク |
 | `src/content/content.js` | 拡張のISOLATED world | 字幕取得指示、パース、描画、設定反映、キー入力、キャプチャ制御、公開ステータス |
 | `src/background/service-worker.js` | 拡張Service Worker | 字幕CDN取得、表示中タブのキャプチャ、黒画像判定、PNGダウンロード |
 | `src/shared/core.js` | Content / Service Worker / Popup / Test | DOMやChrome APIに依存しない純粋ロジック |
@@ -106,11 +106,11 @@ flowchart LR
 
 ## 7. 起動シーケンス
 
-1. Chromeが `document_start` で `bridge.js` をMAIN worldへ注入する。
+1. Chromeが `document_start` で `netflix-bridge.js` をMAIN worldへ注入する。
 2. 続いて `content.js` をISOLATED worldへ注入する。
 3. `content.js` は `chrome.storage.local` から設定を読み込み、Shadow DOMオーバーレイを準備する。
 4. `content.js` が `REQUEST_TRACKS` を送る。
-5. `bridge.js` はキャッシュ済みトラックを返すか、プレイヤー探索を開始する。
+5. `netflix-bridge.js` はキャッシュ済みトラックを返すか、プレイヤー探索を開始する。
 6. トラック発見後、`TRACKS_DISCOVERED` が `content.js` へ送られる。
 7. `content.js` は日本語・英語の優先トラックを選び、Service Worker経由で字幕本文を取得する。
 8. 字幕をパースしてキュー配列へ格納し、`requestAnimationFrame` ループで現在時刻に合う字幕を描画する。
@@ -119,7 +119,7 @@ flowchart LR
 
 ### 8.1 マニフェスト観測
 
-`bridge.js` はページロードの初期段階で `window.fetch` と `XMLHttpRequest` をラップする。URLに `manifest`、`playapi`、`metadata` を含むJSONレスポンスだけを複製・解析する。
+`netflix-bridge.js` はページロードの初期段階で `window.fetch` と `XMLHttpRequest` をラップする。URLに `manifest`、`playapi`、`metadata` を含むJSONレスポンスだけを複製・解析する。
 
 解析では、オブジェクトのキー名が `timedtext`、`subtitle`、`caption` に該当する配列だけをトラック候補とする。単に言語とURLを持つ配列をすべて字幕扱いしないため、音声ストリームを字幕と誤認しない。
 
@@ -490,7 +490,7 @@ Netflixの非公開API、DRM、全画面表示、実際のキー競合はNode単
 ```text
 manifest.json
 src/
-  page/bridge.js
+  page/netflix-bridge.js
   content/content.js
   background/service-worker.js
   shared/core.js
@@ -515,7 +515,7 @@ CHANGELOG.md
 
 ### 24.1 Netflix非公開実装への依存
 
-内部API名、セッションID、`MediaSession` 配下の構造、マニフェスト形状、DOM selectorは予告なく変わる可能性がある。変更時は `bridge.js` を優先的に調査し、Netflix固有知識を他モジュールへ広げない。
+内部API名、セッションID、`MediaSession` 配下の構造、マニフェスト形状、DOM selectorは予告なく変わる可能性がある。変更時は `netflix-bridge.js` を優先的に調査し、Netflix固有知識を他モジュールへ広げない。
 
 ### 24.2 トラック探索時の一時切替
 
@@ -535,7 +535,7 @@ Chromeが表示中タブを取得できても、映像部分は環境により�
 
 ## 25. 変更時の指針
 
-- Netflix内部プレイヤーやマニフェスト変更は `bridge.js` 内で吸収する。
+- Netflix内部プレイヤーやマニフェスト変更は `netflix-bridge.js` 内で吸収する。
 - 新しい字幕形式は `core.js` に純粋関数として実装し、サニタイズ済みfixtureテストを追加する。
 - 新しいページメッセージは送受信方向、payload schema、検証条件を本書へ追記する。
 - 権限追加時は必須か任意かを検討し、manifestテスト、README、本書を同時更新する。
