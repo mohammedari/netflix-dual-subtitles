@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
 
-async function loadDisneyBridge(playlist, { video = null, status = "" } = {}) {
+async function loadDisneyBridge(playlist, { video = null, status = "", timeline = null } = {}) {
   const source = await readFile(new URL("../src/page/disney-bridge.js", import.meta.url), "utf8");
   const posted = [];
   const listeners = new Map();
@@ -27,11 +27,23 @@ async function loadDisneyBridge(playlist, { video = null, status = "" } = {}) {
   const activeElement = { dispatchEvent: (event) => dispatchedKeys.push(event.key) };
   const statusElement = { textContent: status };
   class MockElement {
+    constructor() {
+      this.attributes = new Map();
+    }
+    getAttribute(name) {
+      return this.attributes.get(name) ?? null;
+    }
+    setAttribute(name, value) {
+      this.attributes.set(name, String(value));
+    }
     attachShadow() {
       const children = [];
       this.shadowRootForTest = {
         appendChild: (child) => children.push(child),
-        querySelector: () => children.find((child) => child.dataset?.dualSubtitlesNative !== undefined) || null
+        querySelector: () => children.find((child) => child.dataset?.dualSubtitlesNative !== undefined) || null,
+        querySelectorAll: (selector) => selector === '[aria-valuenow][aria-valuemax]' && this.timelineForTest
+          ? [this.timelineForTest]
+          : []
       };
       return this.shadowRootForTest;
     }
@@ -45,7 +57,11 @@ async function loadDisneyBridge(playlist, { video = null, status = "" } = {}) {
       createElement: () => ({ dataset: {}, textContent: "" }),
       documentElement: {},
       querySelector: (selector) => selector === ".text-to-speech-status" && status ? statusElement : null,
-      querySelectorAll: (selector) => selector === "video" && video ? [video] : []
+      querySelectorAll: (selector) => {
+        if (selector === "video") return video ? [video] : [];
+        if (selector === '[aria-valuenow][aria-valuemax]') return timeline ? [timeline] : [];
+        return [];
+      }
     },
     KeyboardEvent: class {
       constructor(_type, options) { Object.assign(this, options); }
@@ -115,6 +131,46 @@ test("Disney bridge publishes the presentation-time offset", async () => {
   assert.equal(clock.payload.offsetMs, 2099000);
 });
 
+test("Disney bridge uses the player timeline when the live status has no clock value", async () => {
+  const video = { clientWidth: 1280, clientHeight: 720, currentTime: 479.466 };
+  const timeline = {
+    getAttribute: (name) => ({ "aria-valuenow": "3395", "aria-valuemax": "8186" })[name] ?? null
+  };
+  const bridge = await loadDisneyBridge("#EXTM3U", { video, status: "再生中", timeline });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    origin: "https://www.disneyplus.com",
+    data: { source: "netflix-dual-subtitles", type: "REQUEST_TRACKS", payload: {} }
+  });
+  const clock = bridge.posted.find((message) => message.type === "PLAYBACK_CLOCK");
+  assert.equal(clock.payload.offsetMs, 2915534);
+  video.currentTime += 1;
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    origin: "https://www.disneyplus.com",
+    data: { source: "netflix-dual-subtitles", type: "REQUEST_TRACKS", payload: {} }
+  });
+  assert.equal(bridge.posted.filter((message) => message.type === "PLAYBACK_CLOCK").length, 1);
+});
+
+test("Disney bridge finds the player timeline inside a closed shadow root", async () => {
+  const video = { clientWidth: 1280, clientHeight: 720, currentTime: 479.466 };
+  const timeline = {
+    getAttribute: (name) => ({ "aria-valuenow": "3395", "aria-valuemax": "8186" })[name] ?? null
+  };
+  const bridge = await loadDisneyBridge("#EXTM3U", { video, status: "再生中" });
+  const player = new bridge.Element();
+  player.timelineForTest = timeline;
+  player.attachShadow({ mode: "closed" });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    origin: "https://www.disneyplus.com",
+    data: { source: "netflix-dual-subtitles", type: "REQUEST_TRACKS", payload: {} }
+  });
+  const clock = bridge.posted.find((message) => message.type === "PLAYBACK_CLOCK");
+  assert.equal(clock.payload.offsetMs, 2915534);
+});
+
 test("Disney bridge hides and restores native captions inside closed shadow roots", async () => {
   const bridge = await loadDisneyBridge("#EXTM3U");
   const player = new bridge.Element();
@@ -126,6 +182,7 @@ test("Disney bridge hides and restores native captions inside closed shadow root
     data: { source: "netflix-dual-subtitles", type: "NATIVE_CAPTIONS", payload: { hidden: true } }
   });
   assert.match(root.querySelector("style[data-dual-subtitles-native]").textContent, /visibility: hidden/);
+  assert.match(root.querySelector("style[data-dual-subtitles-native]").textContent, /TimedTextOverlay/);
   listener({
     source: bridge.window,
     origin: "https://www.disneyplus.com",

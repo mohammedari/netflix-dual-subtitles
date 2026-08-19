@@ -9,6 +9,7 @@
   let lastTracks = [];
   let lastRoute = location.href;
   let lastClockOffset = null;
+  let lastPresentationTimeMs = null;
   let nativeCaptionsHidden = false;
   const inspectedPlaylists = new Set();
   const playerShadowRoots = new Set();
@@ -23,7 +24,9 @@
       style.dataset.dualSubtitlesNative = "";
       root.appendChild(style);
     }
-    style.textContent = nativeCaptionsHidden ? ".dss-hls-subtitle-overlay { visibility: hidden !important; }" : "";
+    style.textContent = nativeCaptionsHidden
+      ? ".dss-hls-subtitle-overlay, .TimedTextOverlay, .hive-subtitle-renderer-cue-positioning-box { visibility: hidden !important; }"
+      : "";
   }
 
   function setNativeCaptionsHidden(hidden) {
@@ -125,6 +128,7 @@
     lastFingerprint = "";
     lastTracks = [];
     lastClockOffset = null;
+    lastPresentationTimeMs = null;
     inspectedPlaylists.clear();
   }
 
@@ -186,12 +190,30 @@
       .sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight))[0] || null;
   }
 
+  function timelinePresentationTimeMs() {
+    const selector = '[aria-valuenow][aria-valuemax]';
+    const roots = [document, ...playerShadowRoots];
+    const elements = roots.flatMap((root) => [...(root.querySelectorAll?.(selector) || [])]);
+    const candidates = elements
+      .map((element) => ({
+        current: Number(element.getAttribute("aria-valuenow")),
+        maximum: Number(element.getAttribute("aria-valuemax"))
+      }))
+      .filter(({ current, maximum }) => Number.isFinite(current) && Number.isFinite(maximum) && maximum > 60 && current >= 0 && current <= maximum)
+      .sort((a, b) => b.maximum - a.maximum);
+    return candidates.length ? candidates[0].current * 1000 : NaN;
+  }
+
   function publishPlaybackClock() {
     const video = activeVideo();
     const status = document.querySelector(".text-to-speech-status")?.textContent || "";
     const values = status.match(/\d{4,}/g) || [];
-    const presentationTimeMs = Number(values.at(-1));
+    const timelineTimeMs = timelinePresentationTimeMs();
+    const statusTimeMs = Number(values.at(-1));
+    const presentationTimeMs = Number.isFinite(timelineTimeMs) ? timelineTimeMs : statusTimeMs;
     if (!video || !Number.isFinite(video.currentTime) || !Number.isFinite(presentationTimeMs)) return;
+    if (presentationTimeMs === lastPresentationTimeMs) return;
+    lastPresentationTimeMs = presentationTimeMs;
     const offsetMs = Math.round(presentationTimeMs - (video.currentTime * 1000));
     if (Math.abs(offsetMs) > 86_400_000 || offsetMs === lastClockOffset) return;
     lastClockOffset = offsetMs;

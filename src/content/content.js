@@ -18,6 +18,69 @@ async function start(core) {
   let sessionGeneration = 0;
   const service = location.hostname.endsWith("disneyplus.com") ? "disneyplus" : "netflix";
   let playbackOffsetMs = 0;
+  let disneyTimelineElement = null;
+  let lastDisneyTimelineTimeMs = null;
+  let disneyClockTimer = null;
+
+  function disneyDomRoots() {
+    const roots = [document];
+    const seen = new Set(roots);
+    for (let index = 0; index < roots.length && roots.length < 40; index += 1) {
+      const root = roots[index];
+      for (const element of root.querySelectorAll?.("*") || []) {
+        let shadowRoot = null;
+        try { shadowRoot = chrome.dom?.openOrClosedShadowRoot?.(element) || null; } catch {}
+        if (shadowRoot && !seen.has(shadowRoot)) {
+          seen.add(shadowRoot);
+          roots.push(shadowRoot);
+        }
+      }
+    }
+    return roots;
+  }
+
+  function timelineTimeMs(element) {
+    if (!element?.getAttribute) return NaN;
+    const current = Number(element.getAttribute("aria-valuenow"));
+    const maximum = Number(element.getAttribute("aria-valuemax"));
+    return Number.isFinite(current) && Number.isFinite(maximum) && maximum > 60 && current >= 0 && current <= maximum
+      ? current * 1000
+      : NaN;
+  }
+
+  function updateDisneyPlaybackClock() {
+    if (service !== "disneyplus") return;
+    let presentationTimeMs = timelineTimeMs(disneyTimelineElement);
+    if (!Number.isFinite(presentationTimeMs)) {
+      const candidates = disneyDomRoots()
+        .flatMap((root) => [...(root.querySelectorAll?.('[aria-valuenow][aria-valuemax]') || [])])
+        .map((element) => ({ element, timeMs: timelineTimeMs(element), maximum: Number(element.getAttribute("aria-valuemax")) }))
+        .filter(({ timeMs }) => Number.isFinite(timeMs))
+        .sort((a, b) => b.maximum - a.maximum);
+      disneyTimelineElement = candidates[0]?.element || null;
+      presentationTimeMs = candidates[0]?.timeMs ?? NaN;
+    }
+    const video = getVideo();
+    if (!video || !Number.isFinite(presentationTimeMs)) return;
+    if (presentationTimeMs === lastDisneyTimelineTimeMs) return;
+    lastDisneyTimelineTimeMs = presentationTimeMs;
+    const offsetMs = Math.round(presentationTimeMs - (video.currentTime * 1000));
+    if (Math.abs(offsetMs) <= 86_400_000) playbackOffsetMs = offsetMs;
+  }
+
+  function setDisneyNativeCaptionsHidden(hidden) {
+    for (const root of disneyDomRoots().slice(1)) {
+      let style = root.querySelector?.("style[data-dual-subtitles-native-isolated]");
+      if (!style) {
+        style = document.createElement("style");
+        style.dataset.dualSubtitlesNativeIsolated = "";
+        root.appendChild?.(style);
+      }
+      style.textContent = hidden
+        ? ".dss-hls-subtitle-overlay, .TimedTextOverlay, .hive-subtitle-renderer-cue-positioning-box { visibility: hidden !important; }"
+        : "";
+    }
+  }
 
   function ensureOverlay() {
     if (overlay?.isConnected) return overlay;
@@ -69,6 +132,7 @@ async function start(core) {
     }
     if (service === "disneyplus") {
       document.documentElement.classList.toggle("nds-enabled", Boolean(hidden));
+      setDisneyNativeCaptionsHidden(Boolean(hidden));
       window.postMessage({ source: MESSAGE_SOURCE, type: "NATIVE_CAPTIONS", payload: { hidden: Boolean(hidden) } }, location.origin);
       return;
     }
@@ -141,6 +205,8 @@ async function start(core) {
     trackState = { ja: "searching", en: "searching" };
     lastError = null;
     playbackOffsetMs = 0;
+    disneyTimelineElement = null;
+    lastDisneyTimelineTimeMs = null;
     updateNativeCaptionVisibility();
     window.postMessage({ source: MESSAGE_SOURCE, type: "REQUEST_TRACKS", payload: {} }, location.origin);
   }
@@ -348,9 +414,14 @@ async function start(core) {
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   applySettings();
+  if (service === "disneyplus") {
+    updateDisneyPlaybackClock();
+    disneyClockTimer = setInterval(updateDisneyPlaybackClock, 1000);
+  }
   animationLoop();
   window.addEventListener("pagehide", () => {
     cancelAnimationFrame(renderFrame);
+    if (disneyClockTimer) clearInterval(disneyClockTimer);
     observer.disconnect();
     if (service === "disneyplus") {
       window.postMessage({ source: MESSAGE_SOURCE, type: "NATIVE_CAPTIONS", payload: { hidden: false } }, location.origin);

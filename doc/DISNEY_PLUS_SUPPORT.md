@@ -27,7 +27,7 @@
 
 ブリッジはChrome拡張APIを使用しない。Disney+は再生期間によって`video.currentTime`が作品全体の時刻と一致しないため、シーク要求はプレイヤーが標準対応する`ArrowLeft` / `ArrowRight`へ変換する。これによりDisney+自身の10秒シークと境界処理を使用する。
 
-Disney+の標準字幕は閉じたShadow DOM内の`.dss-hls-subtitle-overlay`へ描画される。ブリッジは`document_start`で`Element.prototype.attachShadow`をラップして生成されたShadowRootをメモリ内に保持し、コンテンツスクリプトからの`NATIVE_CAPTIONS`要求に応じて字幕レイヤー専用styleを挿入する。拡張OFF、ページ離脱、エラー時はstyle本文を空にして標準字幕を復元する。映像やプレイヤー操作UIにはスタイルを適用しない。
+Disney+の標準字幕は閉じたShadow DOM内の`.dss-hls-subtitle-overlay`または`.TimedTextOverlay`系のレイヤーへ描画される。ブリッジは`document_start`で`Element.prototype.attachShadow`をラップして生成されたShadowRootをメモリ内に保持し、コンテンツスクリプトからの`NATIVE_CAPTIONS`要求に応じて字幕レイヤー専用styleを挿入する。拡張OFF、ページ離脱、エラー時はstyle本文を空にして標準字幕を復元する。映像やプレイヤー操作UIにはスタイルを適用しない。
 
 ### 字幕取得
 
@@ -51,7 +51,7 @@ offsetMs = MPEGTS / 90 - LOCAL(ms)
 
 同じ開始時刻、終了時刻、本文を持つキューは重複排除する。未知の字幕形式や空のプレイリストは推測せずエラーとして扱う。
 
-Disney+ではMedia Sourceの期間切替により、表示中`video`のローカル時刻と作品全体の表示時刻にオフセットが生じる場合がある。コンテンツスクリプトはプレイヤーの`.text-to-speech-status`が通知するミリ秒値からオフセットを更新し、字幕描画とキャプチャの時刻へ適用する。Netflixでは従来どおり`video.currentTime`を直接使用する。
+Disney+ではMedia Sourceの期間切替により、表示中`video`のローカル時刻と作品全体の表示時刻にオフセットが生じる場合がある。分離環境のコンテンツスクリプトは`chrome.dom.openOrClosedShadowRoot()`でプレイヤーの閉じたShadow DOMへアクセスし、タイムラインが公開する秒値からオフセットを更新する。ブリッジは取得済みShadowRootのタイムラインまたは`.text-to-speech-status`のミリ秒値をフォールバックとして使う。コンテンツスクリプトは補正を字幕描画とキャプチャの時刻へ適用し、Netflixでは従来どおり`video.currentTime`を直接使用する。
 
 ## トラック選択
 
