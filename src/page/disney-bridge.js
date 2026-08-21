@@ -203,8 +203,35 @@
     (target || document.activeElement || document.body || window).dispatchEvent(event);
   }
 
+  function clickTimelineAtOffset(timeline, deltaSeconds) {
+    const current = Number(timeline?.getAttribute?.("aria-valuenow"));
+    const maximum = Number(timeline?.getAttribute?.("aria-valuemax"));
+    const rect = timeline?.getBoundingClientRect?.();
+    if (!Number.isFinite(current) || !Number.isFinite(maximum) || maximum <= 60
+      || current < 0 || current > maximum || !rect || !Number.isFinite(rect.width) || rect.width <= 0) {
+      return false;
+    }
+    const target = Math.min(maximum, Math.max(0, current + deltaSeconds));
+    timeline.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: rect.left + (rect.width * target / maximum),
+      clientY: rect.top + (rect.height / 2),
+      view: window
+    }));
+    return true;
+  }
+
   function seekWithPlayerControl(action) {
     const roots = activePlayerRoots();
+    const timelines = roots
+      .flatMap((root) => [...(root.querySelectorAll?.('[aria-valuenow][aria-valuemax]') || [])])
+      .map((element) => ({ element, maximum: Number(element.getAttribute("aria-valuemax")) }))
+      .filter(({ maximum }) => Number.isFinite(maximum) && maximum > 60)
+      .sort((a, b) => b.maximum - a.maximum);
+    if (clickTimelineAtOffset(timelines[0]?.element, action === "seek-backward" ? -10 : 10)) return;
+
     const directionPattern = action === "seek-backward" ? /前|戻|back|rewind/i : /先|進|forward/i;
     const controls = roots.flatMap((root) => [...(root.querySelectorAll?.("[aria-label]") || [])]);
     const button = controls.find((element) => {
@@ -216,12 +243,7 @@
       return;
     }
 
-    const timeline = roots
-      .flatMap((root) => [...(root.querySelectorAll?.('[aria-valuenow][aria-valuemax]') || [])])
-      .map((element) => ({ element, maximum: Number(element.getAttribute("aria-valuemax")) }))
-      .filter(({ maximum }) => Number.isFinite(maximum) && maximum > 60)
-      .sort((a, b) => b.maximum - a.maximum)[0]?.element;
-    dispatchPlayerKey(action === "seek-backward" ? "ArrowLeft" : "ArrowRight", timeline);
+    dispatchPlayerKey(action === "seek-backward" ? "ArrowLeft" : "ArrowRight", timelines[0]?.element);
   }
 
   function activeVideo() {

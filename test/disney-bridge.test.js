@@ -81,6 +81,9 @@ async function loadDisneyBridge(playlist, { video = null, status = "", timeline 
     KeyboardEvent: class {
       constructor(_type, options) { Object.assign(this, options); }
     },
+    MouseEvent: class {
+      constructor(type, options) { this.type = type; Object.assign(this, options); }
+    },
     MutationObserver: class { observe() {} },
     location: {
       href: "https://www.disneyplus.com/ja-jp/play/sanitized",
@@ -179,6 +182,30 @@ test("Disney bridge uses the player 10-second controls for seek actions", async 
   }
 
   assert.deepEqual(clicks, ["backward", "forward"]);
+  assert.deepEqual(bridge.dispatchedKeys, []);
+});
+
+test("Disney bridge seeks by clicking the player timeline at a 10-second offset", async () => {
+  const clicks = [];
+  const timeline = {
+    dispatchEvent: (event) => clicks.push({ type: event.type, clientX: event.clientX, clientY: event.clientY }),
+    getAttribute: (name) => ({ "aria-valuenow": "100", "aria-valuemax": "200" })[name] ?? null,
+    getBoundingClientRect: () => ({ left: 10, top: 20, width: 200, height: 10 })
+  };
+  const bridge = await loadDisneyBridge("#EXTM3U", { timeline });
+  const listener = bridge.listeners.get("message");
+  for (const action of ["seek-backward", "seek-forward"]) {
+    listener({
+      source: bridge.window,
+      origin: "https://www.disneyplus.com",
+      data: { source: "netflix-dual-subtitles", type: "PLAYER_SHORTCUT", payload: { action } }
+    });
+  }
+
+  assert.deepEqual(clicks, [
+    { type: "click", clientX: 100, clientY: 25 },
+    { type: "click", clientX: 120, clientY: 25 }
+  ]);
   assert.deepEqual(bridge.dispatchedKeys, []);
 });
 
