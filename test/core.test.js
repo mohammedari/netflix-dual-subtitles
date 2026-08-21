@@ -11,6 +11,7 @@ import {
   parseHlsSubtitleSegmentUrls,
   parseSubtitle,
   sanitizeFolder,
+  subtitleLookupTimeMs,
   shortcutAction
 } from "../src/shared/core.js";
 
@@ -101,6 +102,11 @@ test("returns all overlapping cue text without duplicates", () => {
   assert.equal(activeCueText(cues, 3500), "");
 });
 
+test("applies negative subtitle offsets earlier and positive offsets later", () => {
+  assert.equal(subtitleLookupTimeMs(500, -500), 1000);
+  assert.equal(subtitleLookupTimeMs(1500, 500), 1000);
+});
+
 test("prefers exact language, non-forced, and non-SDH tracks", () => {
   const tracks = [
     { language: "en-US", isSdh: false, url: "https://example/en-us" },
@@ -116,6 +122,7 @@ test("normalizes invalid settings and download paths", () => {
   const settings = normalizeSettings({ fontSize: "huge", position: "side", downloadSubdirectory: " ../Bad:*Folder/ " });
   assert.equal(settings.fontSize, DEFAULT_SETTINGS.fontSize);
   assert.equal(settings.position, DEFAULT_SETTINGS.position);
+  assert.equal(settings.subtitleOffsetMs, -500);
   assert.equal(settings.downloadSubdirectory, "Bad__Folder");
   assert.equal(sanitizeFolder(""), "Dual Subtitle Captures");
   const filename = buildCaptureFilename({
@@ -126,6 +133,14 @@ test("normalizes invalid settings and download paths", () => {
     now: new Date(2026, 7, 2, 12, 3, 4)
   });
   assert.equal(filename, "Netflix Captures/Bad_ Title__S1_E2_00-01-02_20260802-120304.png");
+});
+
+test("normalizes and bounds subtitle offsets", () => {
+  assert.equal(normalizeSettings({ subtitleOffsetMs: "750.6" }).subtitleOffsetMs, 751);
+  assert.equal(normalizeSettings({ subtitleOffsetMs: -20000 }).subtitleOffsetMs, -10000);
+  assert.equal(normalizeSettings({ subtitleOffsetMs: 20000 }).subtitleOffsetMs, 10000);
+  assert.equal(normalizeSettings({ subtitleOffsetMs: "invalid" }).subtitleOffsetMs, -500);
+  assert.equal(normalizeSettings({ subtitleOffsetMs: "" }).subtitleOffsetMs, -500);
 });
 
 test("detects almost entirely black opaque frames", () => {

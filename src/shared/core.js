@@ -5,17 +5,23 @@ export const DEFAULT_SETTINGS = Object.freeze({
   upperLanguage: "ja",
   fontSize: "medium",
   position: "bottom",
+  subtitleOffsetMs: -500,
   shortcutsEnabled: true,
   downloadSubdirectory: "Dual Subtitle Captures"
 });
 
 export function normalizeSettings(value = {}) {
   const upperLanguage = value.upperLanguage === "en" ? "en" : "ja";
+  const rawSubtitleOffsetMs = value.subtitleOffsetMs === "" ? NaN : Number(value.subtitleOffsetMs);
+  const subtitleOffsetMs = Number.isFinite(rawSubtitleOffsetMs)
+    ? Math.max(-10000, Math.min(10000, Math.round(rawSubtitleOffsetMs)))
+    : DEFAULT_SETTINGS.subtitleOffsetMs;
   return {
     enabled: value.enabled !== false,
     upperLanguage,
     fontSize: ["small", "medium", "large"].includes(value.fontSize) ? value.fontSize : "medium",
     position: ["top", "center", "bottom"].includes(value.position) ? value.position : "bottom",
+    subtitleOffsetMs,
     shortcutsEnabled: value.shortcutsEnabled !== false,
     downloadSubdirectory: sanitizeFolder(value.downloadSubdirectory || DEFAULT_SETTINGS.downloadSubdirectory)
   };
@@ -143,6 +149,10 @@ export function parseHlsSubtitleSegmentUrls(text, baseUrl) {
     } catch {}
   }
   return [...new Set(urls)];
+}
+
+export function subtitleLookupTimeMs(playbackTimeMs, subtitleOffsetMs) {
+  return Number(playbackTimeMs) - Number(subtitleOffsetMs);
 }
 
 export function parseTtml(text) {

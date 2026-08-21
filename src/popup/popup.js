@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS, normalizeSettings } from "../shared/core.js";
 
-const fieldIds = ["enabled", "upperLanguage", "fontSize", "position", "shortcutsEnabled", "downloadSubdirectory"];
+const fieldIds = ["enabled", "upperLanguage", "fontSize", "position", "subtitleOffsetMs", "shortcutsEnabled", "downloadSubdirectory"];
 const elements = Object.fromEntries(fieldIds.map((id) => [id, document.getElementById(id)]));
 const statusElement = document.getElementById("status");
 const capturePermissionButton = document.getElementById("capturePermission");
@@ -17,7 +17,7 @@ async function load() {
   for (const [key, element] of Object.entries(elements)) {
     if (element.type === "checkbox") element.checked = settings[key];
     else element.value = settings[key];
-    element.addEventListener(element.type === "text" ? "change" : "input", save);
+    element.addEventListener(["text", "number"].includes(element.type) ? "change" : "input", save);
   }
   capturePermissionButton.addEventListener("click", async () => {
     await chrome.permissions.request({ origins: ["<all_urls>"] });
@@ -33,9 +33,11 @@ async function save() {
     upperLanguage: elements.upperLanguage.value,
     fontSize: elements.fontSize.value,
     position: elements.position.value,
+    subtitleOffsetMs: elements.subtitleOffsetMs.value,
     shortcutsEnabled: elements.shortcutsEnabled.checked,
     downloadSubdirectory: elements.downloadSubdirectory.value
   });
+  elements.subtitleOffsetMs.value = settings.subtitleOffsetMs;
   elements.downloadSubdirectory.value = settings.downloadSubdirectory;
   await chrome.storage.local.set(settings);
 }

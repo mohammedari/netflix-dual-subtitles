@@ -3,7 +3,7 @@ import(chrome.runtime.getURL("src/shared/core.js")).then((core) => start(core)).
 });
 
 async function start(core) {
-  const { DEFAULT_SETTINGS, MESSAGE_SOURCE, activeCueText, buildCaptureFilename, chooseTrack, normalizeSettings, parseSubtitle, shortcutAction } = core;
+  const { DEFAULT_SETTINGS, MESSAGE_SOURCE, activeCueText, buildCaptureFilename, chooseTrack, normalizeSettings, parseSubtitle, shortcutAction, subtitleLookupTimeMs } = core;
   let settings = normalizeSettings(await chrome.storage.local.get(DEFAULT_SETTINGS));
   let currentTracks = [];
   let cuesByLanguage = { ja: [], en: [] };
@@ -173,7 +173,7 @@ async function start(core) {
     const view = ensureOverlay();
     const video = getVideo();
     if (!view || !video) return;
-    const timeMs = playbackTimeMs(video);
+    const timeMs = subtitleLookupTimeMs(playbackTimeMs(video), settings.subtitleOffsetMs);
     const text = capturedCueText || {
       ja: activeCueText(cuesByLanguage.ja, timeMs),
       en: activeCueText(cuesByLanguage.en, timeMs)
@@ -349,8 +349,8 @@ async function start(core) {
     if (!video) return;
     const wasPlaying = !video.paused && !video.ended;
     capturedCueText = {
-      ja: activeCueText(cuesByLanguage.ja, playbackTimeMs(video)),
-      en: activeCueText(cuesByLanguage.en, playbackTimeMs(video))
+      ja: activeCueText(cuesByLanguage.ja, subtitleLookupTimeMs(playbackTimeMs(video), settings.subtitleOffsetMs)),
+      en: activeCueText(cuesByLanguage.en, subtitleLookupTimeMs(playbackTimeMs(video), settings.subtitleOffsetMs))
     };
     if (wasPlaying) video.pause();
     render();

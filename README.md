@@ -29,9 +29,9 @@ NetflixおよびDisney+の再生画面に日本語・英語字幕を同時表示
 - `k`: 再生・一時停止
 - `l`: 10秒進む
 - `c`: 一時停止して表示中タブをPNG保存し、直前に再生中なら自動再開
-- ツールバーアイコン: ON/OFF、字幕順、サイズ、位置、キー、保存先を変更
+- ツールバーアイコン: ON/OFF、字幕順、サイズ、位置、表示タイミング、キー、保存先を変更
 
-画像は既定で `Downloads/Dual Subtitle Captures/` に保存されます。入力欄やプレイヤーの設定ダイアログを操作している間、ショートカットは無効です。
+字幕は既定で500ms早く表示されます。ポップアップの「字幕表示オフセット」で、負の値なら早く、正の値なら遅く調整できます。画像は既定で `Downloads/Dual Subtitle Captures/` に保存されます。入力欄やプレイヤーの設定ダイアログを操作している間、ショートカットは無効です。
 
 ## 状態とトラブルシューティング
 
@@ -53,7 +53,7 @@ npm run check
 npm run package
 ```
 
-`npm run package` はマニフェストのバージョンに合わせたZIP（現在は `release/netflix-dual-subtitles-v1.0.0.zip`）と展開済みフォルダを生成します。
+`npm run package` はマニフェストのバージョンに合わせたZIP（現在は `release/netflix-dual-subtitles-v1.1.1.zip`）と展開済みフォルダを生成します。
 
 実サービスでのリリース確認項目は [MANUAL_TESTS.md](MANUAL_TESTS.md) を、Disney+対応の設計と保守情報は [doc/DISNEY_PLUS_SUPPORT.md](doc/DISNEY_PLUS_SUPPORT.md) を参照してください。
 
