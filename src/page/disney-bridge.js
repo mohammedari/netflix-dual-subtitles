@@ -236,6 +236,28 @@
     return video;
   }
 
+  function internalPresentationTimeMs(video) {
+    const players = [...document.querySelectorAll("disney-web-player")]
+      .filter((player) => player?.isConnected !== false)
+      .sort((a, b) => Number(b.mediaElement === video) - Number(a.mediaElement === video));
+    for (const player of players) {
+      try {
+        const mediaPlayer = player.mediaPlayer;
+        const timeline = mediaPlayer?.playbackSession?.timeline || mediaPlayer?.timeline;
+        const playheadPositionMs = typeof timeline?.playheadPositionMs === "number" ? timeline.playheadPositionMs : NaN;
+        const zeroPositionMs = typeof timeline?.zeroPositionProgramDateTimeMs === "number"
+          ? timeline.zeroPositionProgramDateTimeMs
+          : NaN;
+        const presentationTimeMs = zeroPositionMs + playheadPositionMs;
+        if (Number.isFinite(playheadPositionMs) && Number.isFinite(zeroPositionMs)
+          && presentationTimeMs >= 0 && presentationTimeMs <= 86_400_000) {
+          return presentationTimeMs;
+        }
+      } catch {}
+    }
+    return NaN;
+  }
+
   function timelinePresentationTimeMs() {
     const selector = '[aria-valuenow][aria-valuemax]';
     const roots = activePlayerRoots();
@@ -254,18 +276,20 @@
     const video = activeVideo();
     const status = document.querySelector(".text-to-speech-status")?.textContent || "";
     const values = status.match(/\d{4,}/g) || [];
+    const internalTimeMs = internalPresentationTimeMs(video);
     const timelineTimeMs = timelinePresentationTimeMs();
     const statusTimeMs = Number(values.at(-1));
+    const hasInternalTime = Number.isFinite(internalTimeMs);
     const hasTimelineTime = Number.isFinite(timelineTimeMs);
-    const presentationTimeMs = hasTimelineTime ? timelineTimeMs : statusTimeMs;
+    const presentationTimeMs = hasInternalTime ? internalTimeMs : (hasTimelineTime ? timelineTimeMs : statusTimeMs);
     if (!video || !Number.isFinite(video.currentTime) || !Number.isFinite(presentationTimeMs)) return;
     if (video.seeking) {
       schedulePlaybackClock(100);
       return;
     }
-    // The accessibility status often stays at the reload position after seeking.
-    // Only a real player timeline may correct an already-published presentation time.
-    if (presentationTimeMs === lastPresentationTimeMs && !(force && hasTimelineTime)) return;
+    // Accessibility state often stays at the reload position after seeking. Only
+    // the internal playback timeline or a real player control may force a refresh.
+    if (presentationTimeMs === lastPresentationTimeMs && !(force && (hasInternalTime || hasTimelineTime))) return;
     lastPresentationTimeMs = presentationTimeMs;
     const videoTimeMs = video.currentTime * 1000;
     const offsetMs = Math.round(presentationTimeMs - videoTimeMs);

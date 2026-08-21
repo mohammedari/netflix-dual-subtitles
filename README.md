@@ -53,7 +53,7 @@ npm run check
 npm run package
 ```
 
-`npm run package` はマニフェストのバージョンに合わせたZIP（現在は `release/netflix-dual-subtitles-v1.1.1.zip`）と展開済みフォルダを生成します。
+`npm run package` はマニフェストのバージョンに合わせたZIP（現在は `release/netflix-dual-subtitles-v1.2.0.zip`）と展開済みフォルダを生成します。
 
 実サービスでのリリース確認項目は [MANUAL_TESTS.md](MANUAL_TESTS.md) を、Disney+対応の設計と保守情報は [doc/DISNEY_PLUS_SUPPORT.md](doc/DISNEY_PLUS_SUPPORT.md) を参照してください。
 

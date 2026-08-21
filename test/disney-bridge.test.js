@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
 
-async function loadDisneyBridge(playlist, { video = null, status = "", timeline = null } = {}) {
+async function loadDisneyBridge(playlist, { video = null, status = "", timeline = null, player = null } = {}) {
   const source = await readFile(new URL("../src/page/disney-bridge.js", import.meta.url), "utf8");
   const posted = [];
   const listeners = new Map();
@@ -73,6 +73,7 @@ async function loadDisneyBridge(playlist, { video = null, status = "", timeline 
       querySelector: (selector) => selector === ".text-to-speech-status" && status ? statusElement : null,
       querySelectorAll: (selector) => {
         if (selector === "video") return video ? [video] : [];
+        if (selector === "disney-web-player") return player ? [player] : [];
         if (selector === '[aria-valuenow][aria-valuemax]') return timeline ? [timeline] : [];
         return [];
       }
@@ -191,6 +192,60 @@ test("Disney bridge publishes the presentation-time offset", async () => {
   });
   const clock = bridge.posted.find((message) => message.type === "PLAYBACK_CLOCK");
   assert.equal(clock.payload.offsetMs, 2099000);
+});
+
+test("Disney bridge prefers the absolute internal playback-session timeline", async () => {
+  const video = { clientWidth: 1280, clientHeight: 720, currentTime: 35.8359 };
+  const player = {
+    isConnected: true,
+    mediaElement: video,
+    mediaPlayer: {
+      playbackSession: {
+        timeline: { playheadPositionMs: 35835, zeroPositionProgramDateTimeMs: 1849000 }
+      }
+    }
+  };
+  const timeline = {
+    getAttribute: (name) => ({ "aria-valuenow": "1800", "aria-valuemax": "2200" })[name] ?? null
+  };
+  const bridge = await loadDisneyBridge("#EXTM3U", {
+    video,
+    player,
+    timeline,
+    status: "1750000で一時停止しています。"
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    origin: "https://www.disneyplus.com",
+    data: { source: "netflix-dual-subtitles", type: "REQUEST_TRACKS", payload: {} }
+  });
+  const clock = bridge.posted.find((message) => message.type === "PLAYBACK_CLOCK");
+  assert.equal(clock.payload.presentationTimeMs, 1884835);
+  assert.ok(Math.abs(clock.payload.offsetMs - 1848999) <= 1);
+});
+
+test("Disney bridge ignores an internal timeline without an absolute zero position", async () => {
+  const video = { clientWidth: 1280, clientHeight: 720, currentTime: 35 };
+  const player = {
+    isConnected: true,
+    mediaElement: video,
+    mediaPlayer: {
+      playbackSession: {
+        timeline: { playheadPositionMs: 35000, zeroPositionProgramDateTimeMs: null }
+      }
+    }
+  };
+  const timeline = {
+    getAttribute: (name) => ({ "aria-valuenow": "1884", "aria-valuemax": "2200" })[name] ?? null
+  };
+  const bridge = await loadDisneyBridge("#EXTM3U", { video, player, timeline });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    origin: "https://www.disneyplus.com",
+    data: { source: "netflix-dual-subtitles", type: "REQUEST_TRACKS", payload: {} }
+  });
+  const clock = bridge.posted.find((message) => message.type === "PLAYBACK_CLOCK");
+  assert.equal(clock.payload.presentationTimeMs, 1884000);
 });
 
 test("Disney bridge uses the player timeline when the live status has no clock value", async () => {

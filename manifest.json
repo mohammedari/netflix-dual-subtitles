@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Netflix & Disney+ Dual Subtitles",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Show Japanese and English subtitles on Netflix and Disney+, control playback with J/K/L, and capture with C.",
   "minimum_chrome_version": "120",
   "permissions": ["activeTab", "downloads", "storage"],

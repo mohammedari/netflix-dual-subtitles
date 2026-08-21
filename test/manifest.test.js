@@ -6,7 +6,7 @@ test("manifest is valid MV3 with narrowly scoped permissions", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "1.1.1");
+  assert.equal(manifest.version, "1.2.0");
   assert.equal(packageJson.version, manifest.version);
   assert.deepEqual(manifest.permissions.sort(), ["activeTab", "downloads", "storage"]);
   assert.deepEqual(manifest.host_permissions, [
